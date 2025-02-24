@@ -35,7 +35,9 @@ class Converter(object):
                 print('K210 Converter ready')
             else:
                 print('Downloading K210 Converter')
-                _path = tf.keras.utils.get_file(k210_converter_download_path, nncase_download_url)     
+                file_name = os.path.basename(k210_converter_download_path)
+                cache_dir = os.path.dirname(k210_converter_download_path)
+                _path = tf.keras.utils.get_file(file_name, cache_dir)     
                 print(_path)    
                 tar_file = tarfile.open(k210_converter_download_path)
                 tar_file.extractall(os.path.join(os.path.dirname(__file__),"ncc"))
