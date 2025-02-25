@@ -10,18 +10,33 @@ import shutil
 import numpy as np
 import shlex
 
-k210_converter_path=os.path.join(os.path.dirname(__file__),"ncc","ncc")
-k210_converter_download_path=os.path.join(os.path.dirname(os.path.abspath(__file__)),'ncc_linux_x86_64.tar.xz')
-nncase_download_url="https://github.com/kendryte/nncase/releases/download/v0.2.0-beta4/ncc_linux_x86_64.tar.xz"
+import platform
+import zipfile
+import tarfile
+
+# 운영체제 자동 감지
+IS_WINDOWS = platform.system() == "Windows"
+
+# K210 변환기 경로 및 다운로드 링크 설정
+if IS_WINDOWS:
+    k210_converter_path = os.path.join(os.path.dirname(__file__), "ncc", "ncc.exe")
+    k210_converter_download_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ncc_win_x86_64.zip')
+    nncase_download_url = "https://github.com/kendryte/nncase/releases/download/v0.2.0-beta4/ncc_win_x86_64.zip"
+else:
+    k210_converter_path = os.path.join(os.path.dirname(__file__), "ncc", "ncc")
+    k210_converter_download_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ncc_linux_x86_64.tar.xz')
+    nncase_download_url = "https://github.com/kendryte/nncase/releases/download/v0.2.0-beta4/ncc_linux_x86_64.tar.xz"
 cwd = os.path.dirname(os.path.realpath(__file__))
 
+# 명령어 실행 함수
 def run_command(cmd, cwd=None):
-    with subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, executable='/bin/bash', universal_newlines=True, cwd=cwd) as p:
+    executable = 'C:\\Windows\\System32\\cmd.exe' if IS_WINDOWS else '/bin/bash'
+    with subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, executable=executable, universal_newlines=True, cwd=cwd) as p:
         while True:
             line = p.stdout.readline()
             if not line:
                 break
-            print(line)    
+            print(line)
         exit_code = p.poll()
     return exit_code
 
@@ -37,10 +52,18 @@ class Converter(object):
                 print('Downloading K210 Converter')
                 _path = tf.keras.utils.get_file(k210_converter_download_path, nncase_download_url)     
                 print(_path)    
-                tar_file = tarfile.open(k210_converter_download_path)
-                tar_file.extractall(os.path.join(os.path.dirname(__file__),"ncc"))
-                tar_file.close()
-                os.chmod(k210_converter_path, 0o775)
+                
+                if IS_WINDOWS:
+                    with zipfile.ZipFile(k210_converter_download_path, 'r') as zip_ref:
+                        zip_ref.extractall(os.path.join(os.path.dirname(__file__), "ncc"))
+                else:
+                    tar_file = tarfile.open(k210_converter_download_path)
+                    tar_file.extractall(os.path.join(os.path.dirname(__file__),"ncc"))
+                    tar_file.close()
+
+                if not IS_WINDOWS:
+                    os.chmod(k210_converter_path, 0o775)  # 리눅스에서 실행 권한 설정
+
 
         if 'edgetpu' in converter_type:
             rc, out = subprocess.getstatusoutput('dpkg -l edgetpu-compiler')
@@ -149,7 +172,14 @@ class Converter(object):
         output_name = os.path.basename(model_path).split(".")[0] + ".kmodel"
         output_path = os.path.join(os.path.dirname(model_path), output_name)
         print(output_path)
-        cmd = '{} compile "{}" "{}" -i tflite --weights-quantize-threshold 1000 --dataset-format raw --dataset "{}"'.format(k210_converter_path, model_path, output_path, folder_name)
+        # cmd = '{} compile "{}" "{}" -i tflite --weights-quantize-threshold 1000 --dataset-format raw --dataset "{}"'.format(k210_converter_path, model_path, output_path, folder_name)
+        # cmd = '{} compile "{}" "{}" -i tflite --weights-quantize-threshold 1000 --dataset-format raw --dataset "{}"'.format(
+        cmd = '{} compile "{}" "{}" -i tflite --weights-quantize-threshold 1000 --dataset-format raw --dataset "{}"'.format(
+            os.path.normpath(k210_converter_path),
+            os.path.normpath(model_path),
+            os.path.normpath(output_path),
+            os.path.normpath(folder_name)
+        )
         print(cmd)
         result = run_command(cmd)
         shutil.rmtree(folder_name, ignore_errors=True)
@@ -226,6 +256,8 @@ class Converter(object):
 
         if 'k210' in self._converter_type:
             self.convert_tflite(model, model_layers, 'k210')
+            print("gganada model path : ", self.model_path)
+            print("gganada model path (split) : ", self.model_path.split(".")[0] + '.tflite')
             self.convert_k210(self.model_path.split(".")[0] + '.tflite')
 
         if 'edgetpu' in self._converter_type:
