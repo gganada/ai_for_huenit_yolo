@@ -248,7 +248,7 @@ class Converter(object):
 
     def convert_model(self, model_path):
         k.clear_session()
-        k.set_learning_phase(0)
+        # set_learning_phase(0) 제거
         model = tf.keras.models.load_model(model_path, compile=False)
         model_layers = model.layers
         self._img_size = model.input_shape[1:3]

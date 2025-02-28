@@ -1,158 +1,132 @@
 import os
+import argparse
 from tqdm import tqdm
 import cv2
 from lxml import etree
 
-foldername = os.path.basename(os.getcwd())
-if foldername == "tools": os.chdir("..")
+def convert_to_xml(image_path, label_path, output_path):
+    os.makedirs(output_path, exist_ok=True)
+    
+    if not os.path.exists(label_path):
+        print(f"Label path does not exist: {label_path}")
+        return
+    
+    label_files = [f for f in os.listdir(label_path) if f.endswith(".txt")]
+    
+    for filename in tqdm(label_files):
+        filename_str = os.path.splitext(filename)[0]
+        img_file = os.path.join(image_path, filename_str + ".jpg")
+        
+        if not os.path.exists(img_file):
+            print(f"Image file not found: {img_file}")
+            continue
+        
+        annotation = etree.Element("annotation")
 
-def convert_to_xml(Dataset_path):
-    current_path = os.getcwd()
-    os.chdir(Dataset_path)
-    DIRS = os.listdir(os.getcwd())
+        folder = etree.Element("folder")
+        folder.text = os.path.basename(image_path)
+        annotation.append(folder)
 
-    for DIR in DIRS:
-        if os.path.isdir(DIR):
-            os.chdir(DIR)
+        filename_xml = etree.Element("filename")
+        filename_xml.text = filename_str + ".jpg"
+        annotation.append(filename_xml)
 
-            print("Currently in Subdirectory:", DIR)
-            CLASS_DIRS = os.listdir(os.getcwd())
-            for CLASS_DIR in CLASS_DIRS:
-                if " " in CLASS_DIR:
-                    os.rename(CLASS_DIR, CLASS_DIR.replace(" ", "_"))
+        path = etree.Element("path")
+        path.text = img_file
+        annotation.append(path)
 
-            CLASS_DIRS = os.listdir(os.getcwd())
-            for CLASS_DIR in CLASS_DIRS:
-                if os.path.isdir(CLASS_DIR):
-                    os.chdir(CLASS_DIR)
+        source = etree.Element("source")
+        annotation.append(source)
+        database = etree.Element("database")
+        database.text = "Unknown"
+        source.append(database)
 
-                    print("\n" + "Creating XML Files for Class:", CLASS_DIR)
-                    # Create Directory for annotations if it does not exist yet
+        size = etree.Element("size")
+        annotation.append(size)
 
-                    #Read Labels from OIDv4 ToolKit
-                    os.chdir("Label")
+        img = cv2.imread(img_file)
+        try:
+            width = etree.Element("width")
+            width.text = str(img.shape[1])
+            height = etree.Element("height")
+            height.text = str(img.shape[0])
+            depth = etree.Element("depth")
+            depth.text = str(img.shape[2])
+            
+            size.append(width)
+            size.append(height)
+            size.append(depth)
+        except AttributeError:
+            print(f"Error reading image: {img_file}")
+            continue
 
-                    #Create PASCAL XML
-                    for filename in tqdm(os.listdir(os.getcwd())):
-                        if filename.endswith(".txt"):
-                            filename_str = str.split(filename, ".")[0]
+        segmented = etree.Element("segmented")
+        segmented.text = "0"
+        annotation.append(segmented)
 
+        label_file_path = os.path.join(label_path, filename)
+        with open(label_file_path, 'r') as label_file:
+            for line in label_file:
+                line = line.strip()
+                l = line.split(' ')
 
-                            annotation = etree.Element("annotation")
+                if len(l) < 5:
+                    continue
 
-                            os.chdir("..")
-                            folder = etree.Element("folder")
-                            folder.text = os.path.basename(os.getcwd())
-                            annotation.append(folder)
+                class_name = "_".join(l[:-4])
+                xmin_l = str(int(round(float(l[-4]))))
+                ymin_l = str(int(round(float(l[-3]))))
+                xmax_l = str(int(round(float(l[-2]))))
+                ymax_l = str(int(round(float(l[-1]))))
 
-                            filename_xml = etree.Element("filename")
-                            filename_xml.text = filename_str + ".jpg"
-                            annotation.append(filename_xml)
+                obj = etree.Element("object")
+                annotation.append(obj)
 
-                            path = etree.Element("path")
-                            path.text = os.path.join(os.path.dirname(os.path.abspath(filename)), filename_str + ".jpg")
-                            annotation.append(path)
+                name = etree.Element("name")
+                name.text = class_name
+                obj.append(name)
 
-                            source = etree.Element("source")
-                            annotation.append(source)
+                pose = etree.Element("pose")
+                pose.text = "Unspecified"
+                obj.append(pose)
 
-                            database = etree.Element("database")
-                            database.text = "Unknown"
-                            source.append(database)
+                truncated = etree.Element("truncated")
+                truncated.text = "0"
+                obj.append(truncated)
 
-                            size = etree.Element("size")
-                            annotation.append(size)
+                difficult = etree.Element("difficult")
+                difficult.text = "0"
+                obj.append(difficult)
 
-                            width = etree.Element("width")
-                            height = etree.Element("height")
-                            depth = etree.Element("depth")
+                bndbox = etree.Element("bndbox")
+                obj.append(bndbox)
 
-                            img = cv2.imread(filename_xml.text)
+                xmin = etree.Element("xmin")
+                xmin.text = xmin_l
+                bndbox.append(xmin)
 
-                            try:
-                                width.text = str(img.shape[1])
-                            except AttributeError:
-                                os.chdir("Label")
-                                continue
-                            height.text = str(img.shape[0])
-                            depth.text = str(img.shape[2])
+                ymin = etree.Element("ymin")
+                ymin.text = ymin_l
+                bndbox.append(ymin)
 
-                            size.append(width)
-                            size.append(height)
-                            size.append(depth)
+                xmax = etree.Element("xmax")
+                xmax.text = xmax_l
+                bndbox.append(xmax)
 
-                            segmented = etree.Element("segmented")
-                            segmented.text = "0"
-                            annotation.append(segmented)
+                ymax = etree.Element("ymax")
+                ymax.text = ymax_l
+                bndbox.append(ymax)
+        
+        xml_output_path = os.path.join(output_path, filename_str + ".xml")
+        with open(xml_output_path, 'wb') as f:
+            s = etree.tostring(annotation, pretty_print=True, xml_declaration=True, encoding='UTF-8')
+            f.write(s)
 
-                            os.chdir("Label")
-                            label_original = open(filename, 'r')
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Convert label files to XML format")
+    parser.add_argument("image_path", type=str, help="Path to the images directory")
+    parser.add_argument("label_path", type=str, help="Path to the labels directory")
+    parser.add_argument("output_path", type=str, help="Path to save XML files")
 
-                            # Labels from OIDv4 Toolkit: name_of_class X_min Y_min X_max Y_max
-                            for line in label_original:
-                                line = line.strip()
-                                l = line.split(' ')
-
-                                class_name_len = len(l) - 4 # 4 coordinates
-                                class_name = l[0]
-                                for i in range(1,class_name_len):
-                                    class_name = f"{class_name}_{l[i]}"
-
-                                addi = class_name_len
-
-                                xmin_l = str(int(round(float(l[0+addi]))))
-                                ymin_l = str(int(round(float(l[1+addi]))))
-                                xmax_l = str(int(round(float(l[2+addi]))))
-                                ymax_l = str(int(round(float(l[3+addi]))))
-
-                                obj = etree.Element("object")
-                                annotation.append(obj)
-
-                                name = etree.Element("name")
-                                name.text = class_name
-                                obj.append(name)
-
-                                pose = etree.Element("pose")
-                                pose.text = "Unspecified"
-                                obj.append(pose)
-
-                                truncated = etree.Element("truncated")
-                                truncated.text = "0"
-                                obj.append(truncated)
-
-                                difficult = etree.Element("difficult")
-                                difficult.text = "0"
-                                obj.append(difficult)
-
-                                bndbox = etree.Element("bndbox")
-                                obj.append(bndbox)
-
-                                xmin = etree.Element("xmin")
-                                xmin.text = xmin_l
-                                bndbox.append(xmin)
-
-                                ymin = etree.Element("ymin")
-                                ymin.text = ymin_l
-                                bndbox.append(ymin)
-
-                                xmax = etree.Element("xmax")
-                                xmax.text = xmax_l
-                                bndbox.append(xmax)
-
-                                ymax = etree.Element("ymax")
-                                ymax.text = ymax_l
-                                bndbox.append(ymax)
-
-                            os.chdir("..")
-                            # write xml to file (encoding utf-8)
-                            s = etree.tostring(annotation, pretty_print=True, xml_declaration=True, encoding='UTF-8')
-                            with open(filename_str + ".xml", 'wb') as f:
-                                f.write(s)
-                                f.close()
-
-                            os.chdir("Label")
-
-                    os.chdir("..")
-                    os.chdir("..")
-
-            os.chdir("..")
+    args = parser.parse_args()
+    convert_to_xml(args.image_path, args.label_path, args.output_path)

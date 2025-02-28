@@ -24,7 +24,7 @@ def download(args, df_val, folder, dataset_dir, class_name, class_code, class_li
         try:
             columns, rows = os.get_terminal_size(0)
         except OSError:
-            columns, rows = os.get_terminal_size(1)
+            columns, rows = (80, 24)
     else:
         columns = 50
     l = int((int(columns) - len(class_name))/2)
